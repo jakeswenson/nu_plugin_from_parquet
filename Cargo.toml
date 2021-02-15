@@ -3,6 +3,9 @@ name = "nu_plugin_from_parquet"
 version = "0.0.0"
 authors = ["Jake Swenson <jake@jakeswenson.com>"]
 edition = "2018"
+repository = "https://github.com/jakeswenson/nu_plugin_from_parquet"
+description = "nu plugin to add parquet support"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
