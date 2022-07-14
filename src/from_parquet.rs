@@ -1,85 +1,72 @@
 use parquet::record::{Field, Row};
 use parquet::file::serialized_reader::{SerializedFileReader, SliceableCursor};
 use parquet::file::reader::FileReader;
-use nu_protocol::{UntaggedValue, Value, ReturnValue};
-use nu_source::Tag;
+use nu_protocol::{Value, Span, ShellError};
 use chrono::{Duration, FixedOffset, TimeZone, DateTime};
+use std::convert::TryInto;
 use std::ops::Add;
-use bigdecimal::{BigDecimal, FromPrimitive};
-use indexmap::IndexMap;
 
-fn convert_to_nu(field: &Field, tag: impl Into<Tag>) -> Value {
+fn convert_to_nu(field: &Field, span: Span) -> Value {
     let epoch: DateTime<FixedOffset> = FixedOffset::west(0)
         .ymd(1970, 1, 1)
         .and_hms(0, 0, 0);
     match field {
-        Field::Null => UntaggedValue::nothing().into_value(tag),
-        Field::Bool(b) => UntaggedValue::boolean(*b).into_value(tag),
-        Field::Byte(b) => UntaggedValue::binary(vec![*b as u8]).into_value(tag),
-        Field::UByte(b) => UntaggedValue::binary(vec![*b]).into_value(tag),
-        Field::Short(s) => UntaggedValue::int(*s).into_value(tag),
-        Field::UShort(s) => UntaggedValue::int(*s).into_value(tag),
-        Field::Int(i) => UntaggedValue::int(*i).into_value(tag),
-        Field::UInt(i) => UntaggedValue::int(*i).into_value(tag),
-        Field::Long(l) => UntaggedValue::int(*l).into_value(tag),
-        Field::ULong(l) => UntaggedValue::int(*l).into_value(tag),
-        Field::Float(float) => {
-            if let Some(f) = BigDecimal::from_f32(*float) {
-                UntaggedValue::decimal(f).into_value(tag)
-            } else {
-                unreachable!("Internal error: protocol did not use f32-compatible decimal")
-            }
-        },
-        Field::Double(double) => {
-            if let Some(d) = BigDecimal::from_f64(*double) {
-                UntaggedValue::decimal(d).into_value(tag)
-            } else {
-                unreachable!("Internal error: protocol did not use f64-compatible decimal")
-            }
-        },
-        Field::Str(s) => UntaggedValue::string(s).into_value(tag),
-        Field::Bytes(bytes) => UntaggedValue::binary(bytes.data().to_vec()).into_value(tag),
+        Field::Null => Value::nothing(span),
+        Field::Bool(b) => Value::boolean(*b, span),
+        Field::Byte(b) => Value::binary(vec![*b as u8], span),
+        Field::UByte(b) => Value::binary(vec![*b], span),
+        Field::Short(s) => Value::int((*s).into(), span),
+        Field::UShort(s) => Value::int((*s).into(), span),
+        Field::Int(i) => Value::int((*i).into(), span),
+        Field::UInt(i) => Value::int((*i).into(), span),
+        Field::Long(l) => Value::int(*l, span),
+        Field::ULong(l) => {
+            (*l).try_into()
+                .map(|l| Value::int(l, span))
+                .unwrap_or_else(|e| Value::Error { error: ShellError::CantConvert("i64".into(), "u64".into(), span, Some(e.to_string())) })
+        }
+        Field::Float(f) => Value::float((*f).into(), span),
+        Field::Double(f) => Value::float(*f, span),
+        Field::Str(s) => Value::string(s, span),
+        Field::Bytes(bytes) => Value::binary(bytes.data().to_vec(), span),
         Field::Date(days_since_epoch) => {
-            let value = epoch.add(Duration::days(*days_since_epoch as i64));
-            UntaggedValue::date(value).into_value(tag)
+            let val = epoch.add(Duration::days(*days_since_epoch as i64));
+            Value::Date { val, span }
         }
         Field::TimestampMillis(millis_since_epoch) => {
-            let value = epoch.add(Duration::milliseconds(*millis_since_epoch as i64));
-            UntaggedValue::date(value).into_value(tag)
+            let val = epoch.add(Duration::milliseconds(*millis_since_epoch as i64));
+            Value::Date { val, span }
         }
         Field::TimestampMicros(micros_since_epoch) => {
-            let value = epoch.add(Duration::microseconds(*micros_since_epoch as i64));
-            UntaggedValue::date(value).into_value(tag)
+            let val = epoch.add(Duration::microseconds(*micros_since_epoch as i64));
+            Value::Date { val, span }
         }
-        Field::Decimal(_d) => unimplemented!("Parquet DECIMAL is not handled yet"),
+        Field::Decimal(_d) => { unimplemented!("Parquet DECIMAL is not handled yet") }
         Field::Group(_row) => { unimplemented!("Nested structs not supported yet") }
         Field::ListInternal(_list) => { unimplemented!("Lists not supported yet") }
         Field::MapInternal(_map) => { unimplemented!("Maps not supported yet") }
     }
 }
 
-fn convert_parquet_row(row: Row, tag: impl Into<Tag>) -> Value {
-    let mut map: IndexMap<String, Value> = IndexMap::with_capacity(row.len());
-    let mut row_iter = row.get_column_iter();
-    let tag = tag.into();
-    while let Some(col) = row_iter.next() {
-        map.insert(col.0.clone(), convert_to_nu(col.1, tag.clone()));
+fn convert_parquet_row(row: Row, span: Span) -> Value {
+    let mut cols = vec![];
+    let mut vals = vec![];
+    for (name, field) in row.get_column_iter() {
+        cols.push(name.clone());
+        vals.push(convert_to_nu(field, span.clone()));
     }
-
-    UntaggedValue::row(map).into_value(tag)
+    Value::Record { cols, vals, span }
 }
 
-pub fn from_parquet_bytes(bytes: Vec<u8>) -> ReturnValue {
+pub fn from_parquet_bytes(bytes: Vec<u8>, span: Span) -> Value {
     let cursor = SliceableCursor::new(bytes);
     let reader = SerializedFileReader::new(cursor).unwrap();
         let mut iter = reader.get_row_iter(None)
             .unwrap();
-    let mut result = Vec::new();
+    let mut vals = Vec::new();
     while let Some(record) = iter.next() {
-        let row = convert_parquet_row(record, Tag::unknown());
-        result.push(row);
+        let row = convert_parquet_row(record, span);
+        vals.push(row);
     }
-
-    let value: Value = UntaggedValue::Table(result).into_value(Tag::unknown());
-    ReturnValue::from(value)
+    Value::List { vals, span }
 }

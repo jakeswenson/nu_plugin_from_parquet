@@ -1,69 +1,47 @@
 mod from_parquet;
 
-use nu_source::{Tag};
+use nu_plugin::{serve_plugin, Plugin, CapnpSerializer, EvaluatedCall, LabeledError};
+use nu_protocol::{Signature, Value};
 
-use nu_errors::ShellError;
-use nu_plugin::{serve_plugin, Plugin};
-use nu_protocol::{
-    CallInfo, Primitive, ReturnValue, Signature, UntaggedValue, Value,
-};
-
-struct FromParquet {
-    bytes: Vec<u8>,
-    name_tag: Tag
-}
+struct FromParquet;
 
 impl FromParquet {
     fn new() -> Self {
-        Self {
-            bytes: Vec::new(),
-            name_tag: Tag::unknown()
-        }
+        Self {}
     }
 }
 
 impl Plugin for FromParquet {
-    fn config(&mut self) -> Result<Signature, ShellError> {
-        Ok(Signature::build("from parquet")
-            .desc("Convert from .parquet binary into table")
-            .filter())
+    fn signature(&self) -> Vec<Signature> {
+        vec![
+            Signature::build("from parquet")
+            .usage("Convert from .parquet binary into table")
+            .filter()
+        ]
     }
 
-    fn begin_filter(&mut self, call_info: CallInfo) -> Result<Vec<ReturnValue>, ShellError> {
-        self.name_tag = call_info.name_tag;
-        Ok(vec![])
-    }
-
-    fn filter(&mut self, input: Value) -> Result<Vec<ReturnValue>, ShellError> {
+    fn run(
+        &mut self, 
+        name: &str,
+        call: &EvaluatedCall,
+        input: &Value,
+    ) -> Result<Value, LabeledError> {
+        assert_eq!(name, "from parquet");
         match input {
-            Value {
-                value: UntaggedValue::Primitive(Primitive::Binary(b)),
-                ..
-            } => {
-                self.bytes.extend_from_slice(&b);
+            Value::Binary { val: b, span } => {
+                Ok(crate::from_parquet::from_parquet_bytes(b.clone(), span.clone()))
             }
-            Value { tag, .. } => {
-                return Err(ShellError::labeled_error_with_secondary(
-                    "Expected binary from pipeline",
-                    "requires binary input",
-                    self.name_tag.clone(),
-                    "value originates from here",
-                    tag,
-                ));
+            v => {
+                return Err(LabeledError {
+                    label: "Expected binary from pipeline".into(),
+                    msg: format!("requires binary input, got {}", v.get_type()),
+                    span: Some(call.head),
+                });
             }
         }
-        Ok(vec![])
-    }
-
-    fn end_filter(&mut self) -> Result<Vec<ReturnValue>, ShellError> {
-        let result = vec![
-            crate::from_parquet::from_parquet_bytes(self.bytes.clone())
-        ];
-        self.bytes.clear();
-        Ok(result)
     }
 }
 
 fn main() {
-    serve_plugin(&mut FromParquet::new());
+    serve_plugin(&mut FromParquet::new(), CapnpSerializer);
 }

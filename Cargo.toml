@@ -10,14 +10,9 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nu-errors = "~0"
-nu-plugin = "~0"
-nu-protocol = "~0"
-nu-source = "~0"
-nu-value-ext = "~0"
+nu-plugin = "~0.65"
+nu-protocol = "~0.65"
 parquet = "3.0.0"
-bigdecimal = "0.2.0"
-indexmap = "1.6.1"
 
 [dependencies.chrono]
 version = "0.4.19"
