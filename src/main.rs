@@ -1,6 +1,6 @@
 mod from_parquet;
 
-use nu_plugin::{serve_plugin, Plugin, CapnpSerializer, EvaluatedCall, LabeledError};
+use nu_plugin::{serve_plugin, Plugin, JsonSerializer, EvaluatedCall, LabeledError};
 use nu_protocol::{Signature, Value};
 
 struct FromParquet;
@@ -28,8 +28,8 @@ impl Plugin for FromParquet {
     ) -> Result<Value, LabeledError> {
         assert_eq!(name, "from parquet");
         match input {
-            Value::Binary { val: b, span } => {
-                Ok(crate::from_parquet::from_parquet_bytes(b.clone(), span.clone()))
+            Value::Binary { val, span } => {
+                Ok(crate::from_parquet::from_parquet_bytes(val.clone(), span.clone()))
             }
             v => {
                 return Err(LabeledError {
@@ -43,5 +43,5 @@ impl Plugin for FromParquet {
 }
 
 fn main() {
-    serve_plugin(&mut FromParquet::new(), CapnpSerializer);
+    serve_plugin(&mut FromParquet::new(), JsonSerializer);
 }

@@ -8,10 +8,15 @@ This is a [nushell] [plugin] to parse parquet data files into `nu` structured t
 
 
 # Installing
-Plugins for `nu` just need to be installed into a directing in `PATH`.
+
+[add the plugin]: https://www.nushell.sh/book/plugins.html#adding-a-plugin
+[`register`]: https://www.nushell.sh/book/commands/register.html
+
+To [add the plugin] permanently, just install it and call [`register`] on it:
 
 ## Using Cargo
 
 ```bash
 cargo install nu_plugin_from_parquet
+register --encoding=json ~/.cargo/bin/nu_plugin_from_parquet
 ```
