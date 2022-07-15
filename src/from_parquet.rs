@@ -1,5 +1,6 @@
+use bytes::Bytes;
 use parquet::record::{Field, Row};
-use parquet::file::serialized_reader::{SerializedFileReader, SliceableCursor};
+use parquet::file::serialized_reader::SerializedFileReader;
 use parquet::file::reader::FileReader;
 use nu_protocol::{Value, Span, ShellError};
 use chrono::{Duration, FixedOffset, TimeZone, DateTime};
@@ -59,7 +60,7 @@ fn convert_parquet_row(row: Row, span: Span) -> Value {
 }
 
 pub fn from_parquet_bytes(bytes: Vec<u8>, span: Span) -> Value {
-    let cursor = SliceableCursor::new(bytes);
+    let cursor = Bytes::from(bytes);
     let reader = SerializedFileReader::new(cursor).unwrap();
         let mut iter = reader.get_row_iter(None)
             .unwrap();
